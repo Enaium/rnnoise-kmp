@@ -1,0 +1,3 @@
+headers = rnnoise.h cinterop_helpers.h
+excludedFunctions = rnnoise_model_from_file
+compilerOpts = -std=c11
