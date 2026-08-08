@@ -21,11 +21,17 @@ val hostArch = System.getProperty("os.arch").lowercase()
 
 // Whether the current host can cross-compile the C library for the given
 // Kotlin/Native target. Apple targets build from macOS via Xcode; linuxX64 is
-// built on Linux hosts.
-//
-// mingwX64 is intentionally excluded: Windows hosts default to MSVC, whose
-// archives are incompatible with Kotlin/Native's MinGW linker. The mingwX64
-// klib is still produced (bindings without an embedded static library).
+// built on Linux hosts; mingwX64 is cross-compiled on Linux hosts with the
+// x86_64-w64-mingw32 toolchain (Windows hosts default to MSVC, whose
+// archives are incompatible with Kotlin/Native's MinGW linker).
+fun hasMingwCrossToolchain(): Boolean {
+    val name = "x86_64-w64-mingw32-gcc"
+    return System.getenv("PATH")?.split(File.pathSeparator).orEmpty().any { dir ->
+        val f = File(dir, name)
+        f.isFile && f.canExecute()
+    }
+}
+
 fun canBuildNativeTarget(targetName: String): Boolean {
     return when {
         hostOs.isMacOsX && targetName.startsWith("macos") -> true
@@ -33,6 +39,7 @@ fun canBuildNativeTarget(targetName: String): Boolean {
         hostOs.isMacOsX && targetName.startsWith("tvos") -> true
         hostOs.isMacOsX && targetName.startsWith("watchos") -> true
         hostOs.isLinux && targetName == "linuxX64" -> true
+        hostOs.isLinux && targetName == "mingwX64" && hasMingwCrossToolchain() -> true
         else -> false
     }
 }
@@ -369,6 +376,17 @@ if (hostOs.isMacOsX) {
     )
 } else if (hostOs.isLinux) {
     registerNativeBuildTasks("linuxX64")
+    // Cross-compile the MinGW static library with the
+    // x86_64-w64-mingw32 toolchain (canBuildNativeTarget gates on it).
+    registerNativeBuildTasks(
+        "mingwX64",
+        listOf(
+            "-DCMAKE_SYSTEM_NAME=Windows",
+            "-DCMAKE_SYSTEM_PROCESSOR=x86_64",
+            "-DCMAKE_C_COMPILER=x86_64-w64-mingw32-gcc",
+            "-DCMAKE_CXX_COMPILER=x86_64-w64-mingw32-g++",
+        ),
+    )
 }
 
 // ==================== Android: build JNI shared library per ABI ====================

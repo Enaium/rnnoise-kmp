@@ -4,13 +4,20 @@ name: Publish
   workflow_dispatch:
 
 # Publishes every artifact from the runner that can build it. Maven Central
-# coordinates are immutable, so each `:jni-jvm-{classifier}` is published from
-# exactly one runner:
+# coordinates are immutable, so each publication is produced by exactly one
+# runner:
 #
-#   macos-14      -> :rnnoise-kmp (multiplatform module: android/jvm/macos/ios/tvos/watchos)
+#   macos-14      -> :rnnoise-kmp metadata + jvm + android + all Apple
+#                    target klibs (macos/ios/tvos/watchos), and
 #                    :jni-jvm-darwin-aarch64, :jni-jvm-darwin-x86_64
-#   ubuntu-latest -> :jni-jvm-linux-x86_64, :jni-jvm-linux-aarch64 (via aarch64 cross)
+#   ubuntu-latest -> :rnnoise-kmp linuxX64 + mingwX64 klibs (with the
+#                    embedded static library, cross-compiled), and
+#                    :jni-jvm-linux-x86_64, :jni-jvm-linux-aarch64
 #   windows-latest -> :jni-jvm-windows-x86_64 (via MinGW)
+#
+# The kotlinMultiplatform metadata module (published from macOS) redirects to
+# the per-target klib modules, so all of them must be published before
+# consumers can resolve the artifact.
 #
 # Trigger: run manually via the Actions tab. Version is fixed at 1.0.0
 # (build.gradle.kts).
@@ -24,7 +31,7 @@ name: Publish
 
 jobs:
   publish-macos:
-    name: Publish macOS (multiplatform + darwin JNI)
+    name: Publish macOS (metadata + jvm + android + Apple klibs + darwin JNI)
     runs-on: macos-14
     steps:
       - name: Check out repository
@@ -47,13 +54,29 @@ jobs:
           ls -la "$RUNNER_TEMP/signing-key.gpg"
           head -c 16 "$RUNNER_TEMP/signing-key.gpg" | od -c | head -2
 
-      - name: Publish :rnnoise-kmp and :jni-jvm-darwin-*
+      # Per-target publications are used instead of
+      # publishAllPublicationsToMavenCentralRepository so that the linuxX64 /
+      # mingwX64 klibs (built with their embedded static library on the Linux
+      # runner) are not published from here as bindings-only klibs.
+      - name: Publish metadata, jvm, android and Apple target klibs
         run: >
           ./gradlew --no-daemon --stacktrace
           -Psigning.keyId="${{ secrets.SIGNING_KEY_ID }}"
           -Psigning.secretKeyRingFile="${{ runner.temp }}/signing-key.gpg"
           -Psigning.password="${{ secrets.SIGNING_PASSWORD }}"
-          :rnnoise-kmp:publishAllPublicationsToMavenCentralRepository
+          :rnnoise-kmp:publishKotlinMultiplatformPublicationToMavenCentralRepository
+          :rnnoise-kmp:publishJvmPublicationToMavenCentralRepository
+          :rnnoise-kmp:publishAndroidPublicationToMavenCentralRepository
+          :rnnoise-kmp:publishMacosArm64PublicationToMavenCentralRepository
+          :rnnoise-kmp:publishMacosX64PublicationToMavenCentralRepository
+          :rnnoise-kmp:publishIosArm64PublicationToMavenCentralRepository
+          :rnnoise-kmp:publishIosX64PublicationToMavenCentralRepository
+          :rnnoise-kmp:publishIosSimulatorArm64PublicationToMavenCentralRepository
+          :rnnoise-kmp:publishTvosArm64PublicationToMavenCentralRepository
+          :rnnoise-kmp:publishTvosSimulatorArm64PublicationToMavenCentralRepository
+          :rnnoise-kmp:publishWatchosArm64PublicationToMavenCentralRepository
+          :rnnoise-kmp:publishWatchosSimulatorArm64PublicationToMavenCentralRepository
+          :rnnoise-kmp:publishWatchosDeviceArm64PublicationToMavenCentralRepository
           :jni-jvm-darwin-aarch64:publishToMavenCentral
           :jni-jvm-darwin-x86_64:publishToMavenCentral
           --continue
@@ -62,7 +85,7 @@ jobs:
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
 
   publish-linux:
-    name: Publish Linux JNI
+    name: Publish Linux (linuxX64/mingwX64 klibs + linux JNI)
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -76,10 +99,10 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - name: Install aarch64-linux-gnu cross-compiler
+      - name: Install cross-compilers
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
@@ -90,12 +113,14 @@ jobs:
           ls -la "$RUNNER_TEMP/signing-key.gpg"
           head -c 16 "$RUNNER_TEMP/signing-key.gpg" | od -c | head -2
 
-      - name: Publish :jni-jvm-linux-{x86_64,aarch64}
+      - name: Publish linuxX64/mingwX64 klibs and linux JNI
         run: >
           ./gradlew --no-daemon --stacktrace
           -Psigning.keyId="${{ secrets.SIGNING_KEY_ID }}"
           -Psigning.secretKeyRingFile="${{ runner.temp }}/signing-key.gpg"
           -Psigning.password="${{ secrets.SIGNING_PASSWORD }}"
+          :rnnoise-kmp:publishLinuxX64PublicationToMavenCentralRepository
+          :rnnoise-kmp:publishMingwX64PublicationToMavenCentralRepository
           :jni-jvm-linux-x86_64:publishToMavenCentral
           :jni-jvm-linux-aarch64:publishToMavenCentral
           --continue
