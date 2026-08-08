@@ -24,6 +24,9 @@ set(RNNOISE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../rnnoise)
 # never modified.
 # ============================================================================
 set(C_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/c_api)
+# The directory only contains build-time downloads (see below), so it is not
+# tracked by git; make sure it exists before the download step.
+file(MAKE_DIRECTORY ${C_API_DIR})
 set(RNNOISE_DATA_C ${C_API_DIR}/rnnoise_data_little.c)
 set(RNNOISE_DATA_H ${C_API_DIR}/rnnoise_data.h)
 
