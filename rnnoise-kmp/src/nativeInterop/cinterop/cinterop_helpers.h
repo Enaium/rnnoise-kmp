@@ -32,6 +32,27 @@
 
 /* Dummy struct definitions for cinterop type generation */
 struct DenoiseState { void* impl; };
-struct RNNModel { void* impl; };
+
+/*
+ * RNNModel mirrors the layout of the struct defined in rnnoise's denoise.c:
+ *
+ *     struct RNNModel {
+ *       const void *const_blob;
+ *       void *blob;
+ *       int blob_len;
+ *       FILE *file;
+ *     };
+ *
+ * FILE is represented as an opaque void* here so the commonized cinterop
+ * klib does not depend on the platform's FILE type. The `file` member must
+ * be cleared after rnnoise_model_from_buffer() because upstream does not
+ * initialize it and rnnoise_model_free() would call fclose() on garbage.
+ */
+struct RNNModel {
+    const void* const_blob;
+    void* blob;
+    int blob_len;
+    void* file;
+};
 
 #endif /* CINTEROP_HELPERS_H_ */

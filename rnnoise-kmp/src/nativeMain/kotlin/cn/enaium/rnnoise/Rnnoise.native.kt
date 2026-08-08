@@ -97,5 +97,9 @@ actual fun createRnnoiseModelFromBuffer(buffer: ByteArray): RnnoiseModel {
         nativeHeap.free(copy)
         error("rnnoise_model_from_buffer returned null")
     }
+    // Upstream rnnoise_model_from_buffer() does not initialize the `file`
+    // member of RNNModel; rnnoise_model_free() would then call fclose() on
+    // garbage. Clear it to work around the bug (see cinterop_helpers.h).
+    ptr.pointed.file = null
     return NativeRnnoiseModel(ptr, copy)
 }

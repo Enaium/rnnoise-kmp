@@ -19,9 +19,11 @@ class RnnoiseJvmTest {
     }
 
     @Test
-    fun testRepeatedCloseIsIdempotent() {
-        val model = createRnnoiseModelFromBuffer(ByteArray(4))
-        model.close()
+    fun testCreateAndCloseManyModels() {
+        // See RnnoiseCommonTest.testCreateAndCloseManyModels.
+        repeat(100) {
+            createRnnoiseModelFromBuffer(ByteArray(4)).close()
+        }
     }
 
     @Test

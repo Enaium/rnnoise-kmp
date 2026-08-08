@@ -68,4 +68,14 @@ class RnnoiseCommonTest {
             )
         }
     }
+
+    @Test
+    fun testCreateAndCloseManyModels() {
+        // Creating and freeing many buffer-backed models reuses native heap
+        // blocks; the upstream RNNModel.file initialization bug makes the
+        // free path crash when a reused block is not zeroed.
+        repeat(50) {
+            createRnnoiseModelFromBuffer(ByteArray(4)).close()
+        }
+    }
 }

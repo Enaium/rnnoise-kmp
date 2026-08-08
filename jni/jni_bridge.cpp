@@ -21,6 +21,7 @@
  */
 
 #include <jni.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "rnnoise.h"
@@ -39,6 +40,28 @@ typedef struct {
     RNNModel* model;
     void* buffer;
 } rnnoise_model_handle_t;
+
+/*
+ * Mirror of the RNNModel struct defined in rnnoise's denoise.c:
+ *
+ *     struct RNNModel {
+ *       const void *const_blob;
+ *       void *blob;
+ *       int blob_len;
+ *       FILE *file;
+ *     };
+ *
+ * rnnoise_model_from_buffer() does not initialize `file`, and
+ * rnnoise_model_free() calls fclose() on it, so it must be cleared before the
+ * model can be freed (upstream bug; the JNI bridge writes through this mirror
+ * because RNNModel itself is opaque).
+ */
+typedef struct {
+    const void* const_blob;
+    void* blob;
+    int blob_len;
+    FILE* file;
+} rnnoise_model_layout_t;
 
 static rnnoise_model_handle_t* rnnoise_model_handle_wrap(RNNModel* model, void* buffer) {
     rnnoise_model_handle_t* handle = (rnnoise_model_handle_t*)malloc(sizeof(rnnoise_model_handle_t));
@@ -143,6 +166,9 @@ Java_cn_enaium_rnnoise_Jni_modelFromBuffer(JNIEnv* env, jclass clazz, jbyteArray
                       "Failed to load rnnoise model from buffer");
         return 0;
     }
+    // Work around the upstream bug: rnnoise_model_from_buffer() leaves
+    // `file` uninitialized and rnnoise_model_free() would fclose() it.
+    reinterpret_cast<rnnoise_model_layout_t*>(model)->file = NULL;
     return reinterpret_cast<jlong>(rnnoise_model_handle_wrap(model, copy));
 }
 
