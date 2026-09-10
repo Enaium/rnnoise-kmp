@@ -184,7 +184,7 @@ jobs:
     # Only the metadata + android publications are published to Maven Local:
     # the Apple target klibs can only be built on macOS, so the module-wide
     # publishToMavenLocal is left to the macOS job. The example consumes the
-    # published artifact (rnnoise-kmp:1.0.1-16KB) from Maven Local.
+    # published artifact (rnnoise-kmp:1.0.1) from Maven Local.
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository

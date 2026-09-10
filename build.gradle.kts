@@ -8,5 +8,5 @@ plugins {
 
 allprojects {
     group = "cn.enaium.rnnoise"
-    version = "1.0.1-16KB"
+    version = "1.0.1"
 }
