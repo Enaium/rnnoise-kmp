@@ -25,7 +25,7 @@ Kotlin Multiplatform bindings for [RNNoise](https://github.com/xiph/rnnoise) —
 **Kotlin Multiplatform / Android:**
 
 ```kotlin
-implementation("cn.enaium.rnnoise:rnnoise-kmp:1.0.0")
+implementation("cn.enaium.rnnoise:rnnoise-kmp:1.0.1")
 ```
 
 **JVM:** the right native binary is resolved automatically — the `rnnoise-kmp-jvm` artifact pulls in the matching `:jni-jvm-*` sibling on the classpath:
