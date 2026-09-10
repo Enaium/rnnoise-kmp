@@ -139,6 +139,14 @@ if(BUILD_JNI)
     endif()
 
     if(ANDROID)
+        # Android devices may use either 4 KB or 16 KB memory pages. NDK r27
+        # requires these linker options so every PT_LOAD segment in the JNI
+        # shared library is compatible with both page sizes.
+        target_link_options(rnnoise_jni PRIVATE
+            "-Wl,-z,max-page-size=16384"
+            "-Wl,-z,common-page-size=16384"
+        )
+
         find_library(log-lib log)
         if(log-lib)
             target_link_libraries(rnnoise_jni PRIVATE ${log-lib})
