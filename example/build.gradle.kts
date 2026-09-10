@@ -44,9 +44,7 @@ kotlin {
 }
 
 dependencies {
-    // Consume the artifact published to the local Maven repository
-    // (run `./gradlew :rnnoise-kmp:publishToMavenLocal` first).
-    implementation("cn.enaium.rnnoise:rnnoise-kmp:1.0.1")
+    implementation(project(":rnnoise-kmp"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
