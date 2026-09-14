@@ -4,6 +4,14 @@ project(rnnoise C CXX)
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
+# The JNI bridge is C++ and uses C++11 (constexpr); the C standard above does
+# not cover it. Without this, CMake's AppleClang default detection leaves the
+# compiler at its pre-C++11 default on some images, where `constexpr` is not a
+# keyword - the earlier code only compiled because jni.h defines `nullptr` for
+# pre-C++11 compilers.
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 # Builds the JNI shared library by default. Native (cinterop) targets build
 # only the static library by passing -DBUILD_JNI=OFF.
 option(BUILD_JNI "Build the JNI shared library" ON)

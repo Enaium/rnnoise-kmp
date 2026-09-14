@@ -1,6 +1,7 @@
 import org.gradle.internal.os.OperatingSystem
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.io.File
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
@@ -9,22 +10,76 @@ plugins {
 // Kotlin/Native's own Android toolchain sysroot (API 26) ships the NDK stub
 // libraries (libEGL, libGLESv2, libOpenSLES, libaaudio, ...) that SDL3's
 // Android drivers reference at link time. Point -L at the per-ABI directory so
-// the libmain.so link resolves them without needing an extra NDK install.
-fun konanAndroidLibDir(abi: String): String? {
-    val konanData = System.getenv("KONAN_DATA_DIR")
-        ?: "${System.getProperty("user.home")}/.konan"
-    val toolchain = File(konanData, "dependencies").listFiles()
-        ?.firstOrNull { it.isDirectory && it.name.matches(Regex("target-toolchain-.*-android_ndk")) }
-        ?: return null
+// the libmain.so link resolves them.
+//
+// The toolchain is downloaded while the build runs, not before it is
+// configured, so on a cold cache (CI) it is not there yet when this script is
+// evaluated - a locally installed NDK has the same stubs at a path that does
+// exist then, and both are passed.
+fun androidStubLibDirs(abi: String): List<String> {
     val triple = when (abi) {
         "arm64-v8a" -> "aarch64-linux-android"
         "armeabi-v7a" -> "arm-linux-androideabi"
         "x86_64" -> "x86_64-linux-android"
         "x86" -> "i686-linux-android"
-        else -> return null
+        else -> return emptyList()
     }
-    return "$toolchain/sysroot/usr/lib/$triple/26"
+    val dirs = mutableListOf<String>()
+
+    val konanData = System.getenv("KONAN_DATA_DIR")
+        ?: "${System.getProperty("user.home")}/.konan"
+    File(konanData, "dependencies").listFiles()
+        // Newest first: an older toolchain left in the cache has an older sysroot.
+        ?.filter { it.isDirectory && it.name.matches(Regex("target-toolchain-.*-android_ndk")) }
+        ?.maxByOrNull { it.name }
+        ?.resolve("sysroot/usr/lib/$triple/$ANDROID_API_LEVEL")
+        ?.takeIf { it.isDirectory }
+        ?.let { dirs += it.absolutePath }
+
+    val ndk = resolveAndroidNdkDir()
+    val host = when {
+        OperatingSystem.current().isMacOsX -> "darwin-x86_64"
+        OperatingSystem.current().isLinux -> "linux-x86_64"
+        else -> null
+    }
+    if (ndk != null && host != null) {
+        ndk.resolve("toolchains/llvm/prebuilt/$host/sysroot/usr/lib/$triple/$ANDROID_API_LEVEL")
+            .takeIf { it.isDirectory }
+            ?.let { dirs += it.absolutePath }
+    }
+    return dirs
 }
+
+/** Android API level the stub libraries are taken for (AAudio needs 26). */
+val ANDROID_API_LEVEL = 26
+
+/** The locally installed NDK, pinned version first, or `null`. */
+fun resolveAndroidNdkDir(): File? {
+    listOf("ANDROID_NDK_HOME", "ANDROID_NDK_ROOT", "NDK_HOME").forEach { key ->
+        System.getenv(key)?.takeIf { it.isNotBlank() }?.let { path ->
+            val dir = File(path)
+            if (dir.isDirectory) return dir
+        }
+    }
+    val sdk = listOf("ANDROID_HOME", "ANDROID_SDK_ROOT")
+        .mapNotNull { System.getenv(it)?.takeIf { path -> path.isNotBlank() } }
+        .map { File(it) }
+        .firstOrNull { it.isDirectory }
+        ?: rootProject.file("local.properties").takeIf { it.isFile }?.let { props ->
+            Properties().apply { props.inputStream().use { load(it) } }
+                .getProperty("sdk.dir")
+                ?.takeIf { it.isNotBlank() }
+                ?.let { File(it) }
+        }
+        ?: return null
+    val ndkParent = sdk.resolve("ndk")
+    if (!ndkParent.isDirectory) return null
+    return ndkParent.resolve(PINNED_NDK_VERSION).takeIf { it.isDirectory }
+        ?: ndkParent.listFiles()?.filter { it.isDirectory }?.maxByOrNull { it.name }
+}
+
+/** Matches android.ndkVersion in gradle.properties. */
+val PINNED_NDK_VERSION = "27.0.12077973"
 
 // Shared by every Android ABI:
 //  - compiler-rt builtins embedded in the sdl-kmp/imgui-kmp klibs overlap with
@@ -75,28 +130,28 @@ kotlin {
     // :examples:waveform:android.
     androidNativeArm64 {
         binaries.sharedLib("main") {
-            konanAndroidLibDir("arm64-v8a")?.let { linkerOpts("-L$it") }
+            androidStubLibDirs("arm64-v8a").forEach { linkerOpts("-L$it") }
             linkerOpts(*androidMainLinkerOpts.toTypedArray())
         }
     }
 
     androidNativeArm32 {
         binaries.sharedLib("main") {
-            konanAndroidLibDir("armeabi-v7a")?.let { linkerOpts("-L$it") }
+            androidStubLibDirs("armeabi-v7a").forEach { linkerOpts("-L$it") }
             linkerOpts(*androidMainLinkerOpts.toTypedArray())
         }
     }
 
     androidNativeX64 {
         binaries.sharedLib("main") {
-            konanAndroidLibDir("x86_64")?.let { linkerOpts("-L$it") }
+            androidStubLibDirs("x86_64").forEach { linkerOpts("-L$it") }
             linkerOpts(*androidMainLinkerOpts.toTypedArray())
         }
     }
 
     androidNativeX86 {
         binaries.sharedLib("main") {
-            konanAndroidLibDir("x86")?.let { linkerOpts("-L$it") }
+            androidStubLibDirs("x86").forEach { linkerOpts("-L$it") }
             linkerOpts(*androidMainLinkerOpts.toTypedArray())
         }
     }
