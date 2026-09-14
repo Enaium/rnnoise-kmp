@@ -45,15 +45,33 @@ class NativeRnnoise internal constructor(internal val ptr: CPointer<DenoiseState
 
     override val frameSize: Int = rnnoise_get_frame_size()
 
+    // RNNoise is trained and gated on the int16 sample range, so the -1..1
+    // frame is scaled up on the way in and back on the way out. The scaled copy
+    // keeps the caller's array untouched, and living here keeps processFrame
+    // allocation free (instances are single threaded, like the denoiser itself).
+    private val scaledInput = FloatArray(frameSize)
+
     override fun processFrame(input: FloatArray, output: FloatArray): Float {
         require(input.size == output.size) {
             "input and output frame lengths must match"
         }
-        return input.usePinned { inPinned ->
+
+        val inCount = minOf(input.size, frameSize)
+        for (i in 0 until inCount) {
+            scaledInput[i] = input[i] * RNNOISE_SAMPLE_SCALE
+        }
+
+        val vad = scaledInput.usePinned { inPinned ->
             output.usePinned { outPinned ->
                 rnnoise_process_frame(ptr, outPinned.addressOf(0), inPinned.addressOf(0))
             }
         }
+
+        val outCount = minOf(output.size, frameSize)
+        for (i in 0 until outCount) {
+            output[i] /= RNNOISE_SAMPLE_SCALE
+        }
+        return vad
     }
 
     override fun processFrame(input: FloatArray): FloatArray {

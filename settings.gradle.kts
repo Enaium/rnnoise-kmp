@@ -18,7 +18,9 @@ dependencyResolutionManagement {
 rootProject.name = "rnnoise-kmp"
 
 include(":rnnoise-kmp")
-include(":example")
+include(":examples:basic")
+include(":examples:waveform")
+include(":examples:waveform:android")
 
 // Per-OS/arch JNI artifacts that bundle the prebuilt librnnoise_jni shared
 // library as a classpath resource. NativeLoader extracts the matching one at

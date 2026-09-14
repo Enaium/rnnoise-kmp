@@ -19,6 +19,50 @@ val rnnoiseDir = rootProject.projectDir.resolve("rnnoise")
 val hostOs = OperatingSystem.current()
 val hostArch = System.getProperty("os.arch").lowercase()
 
+// ==================== Android NDK resolution ====================
+// Resolved before canBuildNativeTarget (and therefore before the kotlin {}
+// block) so that the androidNative targets can embed the NDK-cross-compiled
+// static library on hosts that have the NDK installed.
+val androidApiLevel = 21
+
+val pinnedAndroidNdkVersion = "27.0.12077973"
+
+fun resolveAndroidSdkDir(): java.io.File? {
+    listOf("ANDROID_HOME", "ANDROID_SDK_ROOT").forEach { key ->
+        System.getenv(key)?.takeIf { it.isNotBlank() }?.let {
+            val f = file(it)
+            if (f.isDirectory) return f
+        }
+    }
+    val localProps = rootProject.file("local.properties")
+    if (localProps.isFile) {
+        val props = Properties().apply { localProps.inputStream().use { load(it) } }
+        props.getProperty("sdk.dir")?.takeIf { it.isNotBlank() }?.let {
+            val f = file(it)
+            if (f.isDirectory) return f
+        }
+    }
+    return null
+}
+
+fun resolveAndroidNdkDir(): java.io.File? {
+    listOf("ANDROID_NDK_HOME", "ANDROID_NDK_ROOT", "NDK_HOME").forEach { key ->
+        System.getenv(key)?.takeIf { it.isNotBlank() }?.let {
+            val f = file(it)
+            if (f.isDirectory) return f
+        }
+    }
+    val sdk = resolveAndroidSdkDir() ?: return null
+    val ndkParent = sdk.resolve("ndk")
+    if (!ndkParent.isDirectory) return null
+    val pinned = ndkParent.resolve(pinnedAndroidNdkVersion)
+    if (pinned.isDirectory) return pinned
+    return ndkParent.listFiles()?.filter { it.isDirectory }?.maxByOrNull { it.name }
+}
+
+val resolvedAndroidNdk = resolveAndroidNdkDir()
+val androidNdkToolchain = resolvedAndroidNdk?.resolve("build/cmake/android.toolchain.cmake")
+
 // Whether the current host can cross-compile the C library for the given
 // Kotlin/Native target. Apple targets build from macOS via Xcode; linuxX64 is
 // built on Linux hosts; mingwX64 is cross-compiled on Linux hosts with the
@@ -40,6 +84,9 @@ fun canBuildNativeTarget(targetName: String): Boolean {
         hostOs.isMacOsX && targetName.startsWith("watchos") -> true
         hostOs.isLinux && targetName == "linuxX64" -> true
         hostOs.isLinux && targetName == "mingwX64" && hasMingwCrossToolchain() -> true
+        // Android native (Kotlin/Native) static libraries are cross-compiled
+        // with the NDK toolchain, which any host with the NDK can run.
+        targetName.startsWith("androidNative") && androidNdkToolchain?.isFile == true -> true
         else -> false
     }
 }
@@ -123,6 +170,13 @@ kotlin {
     watchosArm64()
     watchosSimulatorArm64()
     watchosDeviceArm64()
+
+    // Android native (Kotlin/Native) targets, used by Android apps that link a
+    // libmain.so instead of the JVM AAR (examples/waveform/android does).
+    androidNativeArm64()
+    androidNativeArm32()
+    androidNativeX64()
+    androidNativeX86()
 
     // ==================== cinterop for all native targets ====================
     targets.withType<KotlinNativeTarget> {
@@ -389,48 +443,32 @@ if (hostOs.isMacOsX) {
     )
 }
 
+// ==================== Android native (Kotlin/Native) static libraries ====================
+// Cross-compiled with the NDK toolchain for the androidNative targets; the
+// resulting librnnoise.a is embedded into each target's cinterop klib, so a
+// Kotlin/Native Android app (libmain.so) links RNNoise statically.
+androidNdkToolchain?.takeIf { it.isFile }?.let { toolchain ->
+    listOf(
+        "androidNativeArm64" to "arm64-v8a",
+        "androidNativeArm32" to "armeabi-v7a",
+        "androidNativeX64" to "x86_64",
+        "androidNativeX86" to "x86",
+    ).forEach { (targetName, abi) ->
+        registerNativeBuildTasks(
+            targetName,
+            listOf(
+                "-DCMAKE_TOOLCHAIN_FILE=${toolchain.absolutePath}",
+                "-DANDROID_ABI=$abi",
+                "-DANDROID_PLATFORM=android-$androidApiLevel",
+            ),
+        )
+    }
+}
+
 // ==================== Android: build JNI shared library per ABI ====================
 val androidJniAbis = listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
-val androidApiLevel = 21
-
-val pinnedAndroidNdkVersion = "27.0.12077973"
-
-fun resolveAndroidSdkDir(): java.io.File? {
-    listOf("ANDROID_HOME", "ANDROID_SDK_ROOT").forEach { key ->
-        System.getenv(key)?.takeIf { it.isNotBlank() }?.let {
-            val f = file(it)
-            if (f.isDirectory) return f
-        }
-    }
-    val localProps = rootProject.file("local.properties")
-    if (localProps.isFile) {
-        val props = Properties().apply { localProps.inputStream().use { load(it) } }
-        props.getProperty("sdk.dir")?.takeIf { it.isNotBlank() }?.let {
-            val f = file(it)
-            if (f.isDirectory) return f
-        }
-    }
-    return null
-}
-
-fun resolveAndroidNdkDir(): java.io.File? {
-    listOf("ANDROID_NDK_HOME", "ANDROID_NDK_ROOT", "NDK_HOME").forEach { key ->
-        System.getenv(key)?.takeIf { it.isNotBlank() }?.let {
-            val f = file(it)
-            if (f.isDirectory) return f
-        }
-    }
-    val sdk = resolveAndroidSdkDir() ?: return null
-    val ndkParent = sdk.resolve("ndk")
-    if (!ndkParent.isDirectory) return null
-    val pinned = ndkParent.resolve(pinnedAndroidNdkVersion)
-    if (pinned.isDirectory) return pinned
-    return ndkParent.listFiles()?.filter { it.isDirectory }?.maxByOrNull { it.name }
-}
 
 val androidJniLibsDir = layout.buildDirectory.dir("jniLibs")
-val resolvedAndroidNdk = resolveAndroidNdkDir()
-val androidNdkToolchain = resolvedAndroidNdk?.resolve("build/cmake/android.toolchain.cmake")
 
 val buildAndroidJniLibs by tasks.registering {
     group = "build"

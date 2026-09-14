@@ -61,6 +61,16 @@ jobs:
       - name: Run native tests
         run: ./gradlew --no-daemon :rnnoise-kmp:macosArm64Test
 
+      - name: Build the waveform example
+        # The example needs a capture device at runtime, which the runners do
+        # not have, so only the compile and link steps are validated here:
+        # the JVM classes plus the full native executable (which is what
+        # proves the entry point and the static library linkage).
+        run: >
+          ./gradlew --no-daemon
+          :examples:waveform:compileKotlinJvm
+          :examples:waveform:linkDebugExecutableMacosArm64
+
   test-linux:
     name: Test Linux x64
     runs-on: ubuntu-latest
@@ -106,6 +116,14 @@ jobs:
         # rnnoise is C99, so unlike the C++20-requiring webrtc-aec3 the static
         # library links fine with the Kotlin/Native Linux toolchain.
         run: ./gradlew --no-daemon :rnnoise-kmp:linuxX64Test
+
+      - name: Compile the waveform example (linuxX64 + mingwX64)
+        # The other two native targets of the example cross-compile from
+        # Linux; the executable itself is only linked on a matching host.
+        run: >
+          ./gradlew --no-daemon
+          :examples:waveform:compileKotlinLinuxX64
+          :examples:waveform:compileKotlinMingwX64
 
       - name: Compile mingwX64 klib with embedded static library
         # Cross-compiles librnnoise.a with x86_64-w64-mingw32 and embeds it
@@ -183,8 +201,9 @@ jobs:
     #
     # Only the metadata + android publications are published to Maven Local:
     # the Apple target klibs can only be built on macOS, so the module-wide
-    # publishToMavenLocal is left to the macOS job. The example consumes the
-    # published artifact (rnnoise-kmp:1.0.1) from Maven Local.
+    # publishToMavenLocal is left to the macOS job. This keeps the android
+    # publication tasks themselves covered on the runner that can build the
+    # AAR; the example consumes :rnnoise-kmp as a project dependency.
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -217,4 +236,10 @@ jobs:
           :rnnoise-kmp:publishAndroidPublicationToMavenLocal
 
       - name: Assemble Android app and androidTest APK
-        run: ./gradlew --no-daemon :example:assembleDebug :example:assembleDebugAndroidTest
+        run: ./gradlew --no-daemon :examples:basic:assembleDebug :examples:basic:assembleDebugAndroidTest
+
+      - name: Assemble the Android native waveform APK
+        # Links libmain.so for every ABI with the NDK (which also cross-compiles
+        # librnnoise.a for the androidNative targets) and packages the SDL
+        # activity app around it. Running it needs a device or an emulator.
+        run: ./gradlew --no-daemon :examples:waveform:android:assembleDebug

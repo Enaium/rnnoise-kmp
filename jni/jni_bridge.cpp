@@ -26,6 +26,16 @@
 #include <string.h>
 #include "rnnoise.h"
 
+/*
+ * RNNoise is trained and gated on the int16 sample range: its own demo
+ * (rnnoise/examples/rnnoise_demo.c) feeds `short` samples straight into the
+ * float API. The Kotlin API works in -1..1, so frames are scaled by this factor
+ * on the way in and back on the way out. Keep it in sync with
+ * RNNOISE_SAMPLE_SCALE in rnnoise-kmp/src/commonMain/kotlin/cn/enaium/rnnoise/Rnnoise.kt,
+ * which the Kotlin/Native path uses.
+ */
+static constexpr float kRnnoiseSampleScale = 32768.0f;
+
 // ============================================================================
 // Model handle
 //
@@ -120,7 +130,24 @@ Java_cn_enaium_rnnoise_Jni_processFrame(JNIEnv* env, jclass clazz, jlong ptr, jf
 
     jfloat* inData = env->GetFloatArrayElements(input, nullptr);
     jfloat* outData = env->GetFloatArrayElements(output, nullptr);
+
+    // RNNoise is trained and gated on the int16 sample range - its own demo
+    // feeds `short` samples straight into this float API - while this bindings
+    // API works in -1..1. Scale the frame up on the way in and back on the way
+    // out, so the documented range denoises at any level instead of only near
+    // full scale (below ~-2 dBFS RNNoise's silence gate skips filtering).
+    const int frameSize = rnnoise_get_frame_size();
+    const jsize inCount = inLen < frameSize ? inLen : frameSize;
+    for (jsize i = 0; i < inCount; i++) {
+        inData[i] *= kRnnoiseSampleScale;
+    }
+
     float vadProb = rnnoise_process_frame(state, outData, inData);
+
+    const jsize outCount = outLen < frameSize ? outLen : frameSize;
+    for (jsize i = 0; i < outCount; i++) {
+        outData[i] /= kRnnoiseSampleScale;
+    }
     env->ReleaseFloatArrayElements(input, inData, JNI_ABORT);
     env->ReleaseFloatArrayElements(output, outData, 0);
     return vadProb;

@@ -19,7 +19,7 @@ name: Publish
 # the per-target klib modules, so all of them must be published before
 # consumers can resolve the artifact.
 #
-# Trigger: run manually via the Actions tab. Version is fixed at 1.0.1
+# Trigger: run manually via the Actions tab. Version is fixed at 1.0.2
 # (build.gradle.kts).
 #
 # Required repository secrets (Settings -> Secrets and variables -> Actions):
@@ -121,6 +121,10 @@ jobs:
           -Psigning.password="${{ secrets.SIGNING_PASSWORD }}"
           :rnnoise-kmp:publishLinuxX64PublicationToMavenCentralRepository
           :rnnoise-kmp:publishMingwX64PublicationToMavenCentralRepository
+          :rnnoise-kmp:publishAndroidNativeArm64PublicationToMavenCentralRepository
+          :rnnoise-kmp:publishAndroidNativeArm32PublicationToMavenCentralRepository
+          :rnnoise-kmp:publishAndroidNativeX64PublicationToMavenCentralRepository
+          :rnnoise-kmp:publishAndroidNativeX86PublicationToMavenCentralRepository
           :jni-jvm-linux-x86_64:publishToMavenCentral
           :jni-jvm-linux-aarch64:publishToMavenCentral
           --continue

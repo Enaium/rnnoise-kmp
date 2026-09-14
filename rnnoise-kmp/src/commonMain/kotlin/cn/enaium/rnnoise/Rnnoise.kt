@@ -56,6 +56,15 @@ expect fun createRnnoiseModelFromBuffer(buffer: ByteArray): RnnoiseModel
 interface RnnoiseModel : AutoCloseable
 
 /**
+ * RNNoise is trained and gated on the int16 sample range - its own demo feeds
+ * `short` samples straight into the float API - while this API works in -1..1.
+ * Every implementation scales a frame by this factor on the way in and back on
+ * the way out, so the documented range denoises at any level; keep it in sync
+ * with `kRnnoiseSampleScale` in `jni/jni_bridge.cpp`.
+ */
+internal const val RNNOISE_SAMPLE_SCALE = 32_768f
+
+/**
  * An RNNoise denoiser. Processes audio in fixed-size frames of
  * [frameSize] samples (480 samples = 10 ms at 48 kHz).
  */
@@ -66,7 +75,9 @@ interface Rnnoise : AutoCloseable {
     /**
      * Denoises one frame of [input] into [output].
      *
-     * Both arrays must have at least [frameSize] elements.
+     * Both arrays must have at least [frameSize] elements, and the samples are
+     * expected in `-1.0..1.0`; the int16 scaling RNNoise expects is handled
+     * internally.
      *
      * @return speech probability in the range [0, 1] (VAD output)
      */
